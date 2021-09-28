@@ -5,33 +5,46 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using System.Threading;
 
 namespace Flow.Launcher.Plugin.Color
 {
     public sealed class ColorsPlugin : IPlugin, IPluginI18n
     {
-        private string DIR_PATH = Path.Combine(Path.GetTempPath(), @"Plugins\Colors\");
-        private PluginInitContext context;
         private const int IMG_SIZE = 32;
 
         private DirectoryInfo ColorsDirectory { get; set; }
 
-        public ColorsPlugin()
+        private PluginInitContext context;
+
+        public void Init(PluginInitContext context)
         {
-            if (!Directory.Exists(DIR_PATH))
+            this.context = context;
+
+            var imageCacheDirectoryPath = Path.Combine(context.CurrentPluginMetadata.PluginDirectory, "CachedImages");
+
+            if (!Directory.Exists(imageCacheDirectoryPath))
             {
-                ColorsDirectory = Directory.CreateDirectory(DIR_PATH);
+                ColorsDirectory = Directory.CreateDirectory(imageCacheDirectoryPath);
             }
             else
             {
-                ColorsDirectory = new DirectoryInfo(DIR_PATH);
+                ColorsDirectory = new DirectoryInfo(imageCacheDirectoryPath);
             }
         }
 
         public List<Result> Query(Query query)
         {
             var raw = query.Search;
-            if (!IsAvailable(raw)) return new List<Result>(0);
+
+            var isRgb = new Regex(@"(\d{1,3}),\s?(\d{1,3}),\s?(\d{1,3})").IsMatch(raw);
+            var isHex = raw.StartsWith("#") && raw.Length >= 4;
+
+            if (!isRgb && !isHex)
+                return new List<Result>();
+
             try
             {
                 var cached = Find(raw);
@@ -46,40 +59,38 @@ namespace Flow.Launcher.Plugin.Color
                             IcoPath = path,
                             Action = _ =>
                             {
-                                Clipboard.SetText(raw);
+                                Clipboard.SetDataObject(raw);
                                 return true;
                             }
                         }
                     };
                 }
+
                 return cached.Select(x => new Result
                 {
                     Title = raw,
                     IcoPath = x.FullName,
                     Action = _ =>
                     {
-                        Clipboard.SetText(raw);
+                        Clipboard.SetDataObject(raw);
                         return true;
                     }
                 }).ToList();
             }
-            catch (Exception exception)
+            catch (Exception e)
             {
-                // todo: log
-                return new List<Result>(0);
-            }
-        }
+                context.API.ShowMsgError(context.API.GetTranslation("flowlauncher_plugin_color_plugin_name"), 
+                    context.API.GetTranslation("flowlauncher_plugin_color_plugin_conversion_error"));
 
-        private bool IsAvailable(string query)
-        {
-            // todo: rgb, names
-            var length = query.Length - 1; // minus `#` sign
-            return query.StartsWith("#") && (length == 3 || length == 6);
+                context.API.LogException("Query", "Colors plugin failed to convert user's input", e);
+
+                return new List<Result>();
+            }
         }
 
         public FileInfo[] Find(string name)
         {
-            var file = string.Format("{0}.png", name.Substring(1));
+            var file = string.Format("{0}.png", name);
             return ColorsDirectory.GetFiles(file, SearchOption.TopDirectoryOnly);
         }
 
@@ -91,22 +102,12 @@ namespace Flow.Launcher.Plugin.Color
                 var color = ColorTranslator.FromHtml(name);
                 graphics.Clear(color);
 
-                var path = CreateFileName(name);
+
+                var path = Path.Combine(ColorsDirectory.FullName, name+".png");
                 bitmap.Save(path, ImageFormat.Png);
                 return path;
             }
         }
-
-        private string CreateFileName(string name)
-        {
-            return string.Format("{0}{1}.png", ColorsDirectory.FullName, name.Substring(1));
-        }
-
-        public void Init(PluginInitContext context)
-        {
-            this.context = context;
-        }
-
 
         public string GetTranslatedPluginTitle()
         {

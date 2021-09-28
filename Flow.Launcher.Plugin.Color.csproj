@@ -1,8 +1,8 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
   <PropertyGroup>
     <OutputType>Library</OutputType>
-    <TargetFramework>netcoreapp3.1</TargetFramework>
+    <TargetFramework>net5.0-windows</TargetFramework>
     <ProjectGuid>{F35190AA-4758-4D9E-A193-E3BDF6AD3567}</ProjectGuid>
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>Flow.Launcher.Plugin.Color</RootNamespace>
@@ -94,7 +94,7 @@
   </ItemGroup>
   
   <ItemGroup>
-    <PackageReference Include="Flow.Launcher.Plugin" Version="1.3.0" />
+    <PackageReference Include="Flow.Launcher.Plugin" Version="2.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="5.0.0" />
   </ItemGroup>
 
