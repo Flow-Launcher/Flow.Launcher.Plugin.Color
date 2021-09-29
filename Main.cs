@@ -5,85 +5,152 @@ using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Text.RegularExpressions;
 
 namespace Flow.Launcher.Plugin.Color
 {
     public sealed class ColorsPlugin : IPlugin, IPluginI18n
     {
-        private string DIR_PATH = Path.Combine(Path.GetTempPath(), @"Plugins\Colors\");
-        private PluginInitContext context;
         private const int IMG_SIZE = 32;
 
         private DirectoryInfo ColorsDirectory { get; set; }
 
-        public ColorsPlugin()
+        private PluginInitContext context;
+
+        private readonly string colorCodeCleanRegex = @"(\s+|\(|\))";
+
+        public void Init(PluginInitContext context)
         {
-            if (!Directory.Exists(DIR_PATH))
+            this.context = context;
+
+            var imageCacheDirectoryPath = Path.Combine(context.CurrentPluginMetadata.PluginDirectory, "CachedImages");
+
+            if (!Directory.Exists(imageCacheDirectoryPath))
             {
-                ColorsDirectory = Directory.CreateDirectory(DIR_PATH);
+                ColorsDirectory = Directory.CreateDirectory(imageCacheDirectoryPath);
             }
             else
             {
-                ColorsDirectory = new DirectoryInfo(DIR_PATH);
+                ColorsDirectory = new DirectoryInfo(imageCacheDirectoryPath);
             }
         }
 
         public List<Result> Query(Query query)
         {
-            var raw = query.Search;
-            if (!IsAvailable(raw)) return new List<Result>(0);
-            try
-            {
-                var cached = Find(raw);
-                if (cached.Length == 0)
-                {
-                    var path = CreateImage(raw);
-                    return new List<Result>
+            var search = query.Search;
+
+            if (string.IsNullOrEmpty(search))
+                return new List<Result> {
+                    new Result
                     {
+                        Title = context.API.GetTranslation("flowlauncher_plugin_color_plugin_multi_code_format"),
+                        SubTitle = context.API.GetTranslation("flowlauncher_plugin_color_plugin_multi_code_format_suggestion"),
+                        IcoPath = context.CurrentPluginMetadata.IcoPath,
+                        Action = _ =>
+                        {
+                            Clipboard.SetDataObject("99,197,34;(39,0,152)");
+                            return true;
+                        }
+                    }
+                };
+
+            var rawList = search.Split(';');
+
+            var results = new List<Result>();
+
+            foreach (var raw in rawList) {
+
+                // Standardise format since rgb code typed in could be 99,197,34 or (39,0,152)
+                var colorCode = Regex.Replace(raw, colorCodeCleanRegex, "");
+
+                var rgbRegex = new Regex(@"^(\d{1,3}),\s?(\d{1,3}),\s?(\d{1,3})$");
+                var hexRegex = new Regex(@"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$");
+                var isRgb = rgbRegex.IsMatch(colorCode);
+                var isHex = hexRegex.IsMatch(colorCode);
+
+                if (!isRgb && !isHex)
+                    return new List<Result>();
+
+                try
+                {
+                    var createdColorImagePath = string.Empty;
+
+                    var cached = FindFileImage(colorCode);
+                    if (cached == null)
+                    {
+                        createdColorImagePath = CreateCacheImage(colorCode);
+
+                        results.Add(
+                            new Result
+                            {
+                                Title = isRgb ? string.Format("({0})", colorCode) : colorCode,
+                                SubTitle = isRgb ? "RGB" : "HEX",
+                                IcoPath = createdColorImagePath,
+                                Action = _ =>
+                                {
+                                    Clipboard.SetDataObject(colorCode);
+                                    return true;
+                                }
+                            });
+
+                    }
+                    else
+                    {
+                        createdColorImagePath = cached.FullName;
+
+                        results.Add(
+                            new Result
+                            {
+                                Title = isRgb ? string.Format("({0})", colorCode) : colorCode,
+                                SubTitle = isRgb ? "RGB" : "HEX",
+                                IcoPath = createdColorImagePath,
+                                Action = _ =>
+                                {
+                                    Clipboard.SetDataObject(colorCode);
+                                    return true;
+                                }
+                            });
+                    }
+
+                    // Reverse conversion
+                    var conversion = isRgb ? RgbToHex(colorCode, rgbRegex) : HexToRgb(colorCode);
+
+                    results.Add(
                         new Result
                         {
-                            Title = raw,
-                            IcoPath = path,
+                            Title = conversion,
+                            SubTitle = isRgb ? "HEX" : "RGB",
+                            IcoPath = createdColorImagePath,
                             Action = _ =>
                             {
-                                Clipboard.SetText(raw);
+                                Clipboard.SetDataObject(conversion);
                                 return true;
                             }
-                        }
-                    };
+                        });
                 }
-                return cached.Select(x => new Result
+                catch (Exception e)
                 {
-                    Title = raw,
-                    IcoPath = x.FullName,
-                    Action = _ =>
-                    {
-                        Clipboard.SetText(raw);
-                        return true;
-                    }
-                }).ToList();
+                    context.API.ShowMsgError(context.API.GetTranslation("flowlauncher_plugin_color_plugin_name"),
+                        context.API.GetTranslation("flowlauncher_plugin_color_plugin_conversion_error"));
+
+                    context.API.LogException("Query", "Colors plugin failed to convert user's input", e);
+
+                    return new List<Result>();
+                }
             }
-            catch (Exception exception)
-            {
-                // todo: log
-                return new List<Result>(0);
-            }
+
+            return results;
         }
 
-        private bool IsAvailable(string query)
+        public FileInfo FindFileImage(string name)
         {
-            // todo: rgb, names
-            var length = query.Length - 1; // minus `#` sign
-            return query.StartsWith("#") && (length == 3 || length == 6);
+            var file = string.Format("{0}.png", name);
+
+            // shouldnt have multiple files of the same name
+            return ColorsDirectory.GetFiles(file, SearchOption.TopDirectoryOnly).FirstOrDefault();
         }
 
-        public FileInfo[] Find(string name)
-        {
-            var file = string.Format("{0}.png", name.Substring(1));
-            return ColorsDirectory.GetFiles(file, SearchOption.TopDirectoryOnly);
-        }
-
-        private string CreateImage(string name)
+        private string CreateCacheImage(string name)
         {
             using (var bitmap = new Bitmap(IMG_SIZE, IMG_SIZE))
             using (var graphics = Graphics.FromImage(bitmap))
@@ -91,22 +158,34 @@ namespace Flow.Launcher.Plugin.Color
                 var color = ColorTranslator.FromHtml(name);
                 graphics.Clear(color);
 
-                var path = CreateFileName(name);
+
+                var path = Path.Combine(ColorsDirectory.FullName, name+".png");
                 bitmap.Save(path, ImageFormat.Png);
                 return path;
             }
         }
 
-        private string CreateFileName(string name)
+        private string HexToRgb(string hex)
         {
-            return string.Format("{0}{1}.png", ColorsDirectory.FullName, name.Substring(1));
+            var color = ColorTranslator.FromHtml(hex);
+            return $"({color.R},{color.G},{color.B})";
         }
 
-        public void Init(PluginInitContext context)
+        private string RgbToHex(string rgb, Regex rgbRegex)
         {
-            this.context = context;
-        }
+            var color = new List<string>();
+            // match multiple RGB input?
+            foreach (Match match in Regex.Matches(rgb, rgbRegex.ToString(), RegexOptions.IgnoreCase))
+            {
+                var r = int.Parse(match.Groups[1].Value);
+                var g = int.Parse(match.Groups[2].Value);
+                var b = int.Parse(match.Groups[3].Value);
+                var c = System.Drawing.Color.FromArgb(255, r, g, b);
+                color.Add(ColorTranslator.ToHtml(c));
+            }
 
+            return color.First();
+        }
 
         public string GetTranslatedPluginTitle()
         {

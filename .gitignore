@@ -1,0 +1,10 @@
+Output/**
+
+Output/Debug/**
+Output/Release/**
+/obj/**
+/obj/x64/Release
+/obj/x64/Debug
+/.vs
+/.vscode
+/.gitattributes
