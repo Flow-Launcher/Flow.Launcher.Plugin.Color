@@ -9,4 +9,4 @@ For a history of commits for Color plugin itself, please see Flow Launcher's com
 
 The HexRgb plugin is created by Vladimír Antoš (@vladimirantos) and ported over into Color plugin.
 
-This plugin is for previewing color in hex or rgb. From flow type `#d948a7` or `217,72,167`
+This plugin is for previewing color in hex or rgb. From flow type `#d948a7` or `217,72,167` or `99,197,34;(39,0,152)`
