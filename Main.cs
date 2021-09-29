@@ -6,8 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using System.Threading;
 
 namespace Flow.Launcher.Plugin.Color
 {
@@ -39,102 +37,121 @@ namespace Flow.Launcher.Plugin.Color
 
         public List<Result> Query(Query query)
         {
-            var raw = query.Search;
+            var search = query.Search;
 
-            var rgbRegex = new Regex(@"(\d{1,3}),\s?(\d{1,3}),\s?(\d{1,3})");
-            var hexRegex = new Regex(@"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$");
-            var isRgb = rgbRegex.IsMatch(raw);
-            var isHex = hexRegex.IsMatch(raw);
-
-            if (!isRgb && !isHex)
-                return new List<Result>();
-
-            try
-            {
-                var results = new List<Result>();
-                var createdColorImagePath = string.Empty;
-
-                var cached = FindFileImage(raw);
-                if (cached == null)
-                {
-                    createdColorImagePath = CreateCacheImage(raw);
-
-                    results.Add(
-                        new Result
-                        {
-                            Title = raw,
-                            SubTitle = isRgb ? "RGB" : "HEX",
-                            IcoPath = createdColorImagePath,
-                            Action = _ =>
-                            {
-                                Clipboard.SetDataObject(raw);
-                                return true;
-                            }
-                        });
-
-                }
-                else
-                {
-                    createdColorImagePath = cached.FullName;
-
-                    results.Add(
-                        new Result
-                        {
-                            Title = raw,
-                            SubTitle = isRgb ? "RGB" : "HEX",
-                            IcoPath = createdColorImagePath,
-                            Action = _ =>
-                            {
-                                Clipboard.SetDataObject(raw);
-                                return true;
-                            }
-                        });
-                }
-
-                // Reverse conversion
-                var conversion = isRgb ? RgbToHex(raw, rgbRegex) : HexToRgb(raw);
-
-                results.Add(
+            if (string.IsNullOrEmpty(search))
+                return new List<Result> {
                     new Result
                     {
-                        Title = conversion,
-                        SubTitle = isRgb ? "HEX" : "RGB",
-                        IcoPath = createdColorImagePath,
+                        Title = context.API.GetTranslation("flowlauncher_plugin_color_plugin_multi_code_format"),
+                        SubTitle = context.API.GetTranslation("flowlauncher_plugin_color_plugin_multi_code_format_suggestion"),
+                        IcoPath = context.CurrentPluginMetadata.IcoPath,
                         Action = _ =>
                         {
-                            Clipboard.SetDataObject(conversion);
+                            Clipboard.SetDataObject("99,197,34;(39,0,152)");
                             return true;
                         }
-                    });
+                    }
+                };
 
-                return results;
+            var rawList = search.Split(';');
 
+            var results = new List<Result>();
+
+            foreach (var raw in rawList) {
+
+                // Standardise format since rgb code typed in could be 99,197,34 or (39,0,152)
+                var colorCode = Regex.Replace(raw, colorCodeCleanRegex, "");
+
+                var rgbRegex = new Regex(@"^(\d{1,3}),\s?(\d{1,3}),\s?(\d{1,3})$");
+                var hexRegex = new Regex(@"^#([A-Fa-f0-9]{6}|[A-Fa-f0-9]{3})$");
+                var isRgb = rgbRegex.IsMatch(colorCode);
+                var isHex = hexRegex.IsMatch(colorCode);
+
+                if (!isRgb && !isHex)
+                    return new List<Result>();
+
+                try
+                {
+                    var createdColorImagePath = string.Empty;
+
+                    var cached = FindFileImage(colorCode);
+                    if (cached == null)
+                    {
+                        createdColorImagePath = CreateCacheImage(colorCode);
+
+                        results.Add(
+                            new Result
+                            {
+                                Title = isRgb ? string.Format("({0})", colorCode) : colorCode,
+                                SubTitle = isRgb ? "RGB" : "HEX",
+                                IcoPath = createdColorImagePath,
+                                Action = _ =>
+                                {
+                                    Clipboard.SetDataObject(colorCode);
+                                    return true;
+                                }
+                            });
+
+                    }
+                    else
+                    {
+                        createdColorImagePath = cached.FullName;
+
+                        results.Add(
+                            new Result
+                            {
+                                Title = isRgb ? string.Format("({0})", colorCode) : colorCode,
+                                SubTitle = isRgb ? "RGB" : "HEX",
+                                IcoPath = createdColorImagePath,
+                                Action = _ =>
+                                {
+                                    Clipboard.SetDataObject(colorCode);
+                                    return true;
+                                }
+                            });
+                    }
+
+                    // Reverse conversion
+                    var conversion = isRgb ? RgbToHex(colorCode, rgbRegex) : HexToRgb(colorCode);
+
+                    results.Add(
+                        new Result
+                        {
+                            Title = conversion,
+                            SubTitle = isRgb ? "HEX" : "RGB",
+                            IcoPath = createdColorImagePath,
+                            Action = _ =>
+                            {
+                                Clipboard.SetDataObject(conversion);
+                                return true;
+                            }
+                        });
+                }
+                catch (Exception e)
+                {
+                    context.API.ShowMsgError(context.API.GetTranslation("flowlauncher_plugin_color_plugin_name"),
+                        context.API.GetTranslation("flowlauncher_plugin_color_plugin_conversion_error"));
+
+                    context.API.LogException("Query", "Colors plugin failed to convert user's input", e);
+
+                    return new List<Result>();
+                }
             }
-            catch (Exception e)
-            {
-                context.API.ShowMsgError(context.API.GetTranslation("flowlauncher_plugin_color_plugin_name"), 
-                    context.API.GetTranslation("flowlauncher_plugin_color_plugin_conversion_error"));
 
-                context.API.LogException("Query", "Colors plugin failed to convert user's input", e);
-
-                return new List<Result>();
-            }
+            return results;
         }
 
-        public FileInfo FindFileImage(string raw)
+        public FileInfo FindFileImage(string name)
         {
-            var name = Regex.Replace(raw, colorCodeCleanRegex, "");
-
             var file = string.Format("{0}.png", name);
 
             // shouldnt have multiple files of the same name
             return ColorsDirectory.GetFiles(file, SearchOption.TopDirectoryOnly).FirstOrDefault();
         }
 
-        private string CreateCacheImage(string raw)
+        private string CreateCacheImage(string name)
         {
-            var name = Regex.Replace(raw, colorCodeCleanRegex, "");
-
             using (var bitmap = new Bitmap(IMG_SIZE, IMG_SIZE))
             using (var graphics = Graphics.FromImage(bitmap))
             {
@@ -151,7 +168,7 @@ namespace Flow.Launcher.Plugin.Color
         private string HexToRgb(string hex)
         {
             var color = ColorTranslator.FromHtml(hex);
-            return $"({color.R}, {color.G}, {color.B})";
+            return $"({color.R},{color.G},{color.B})";
         }
 
         private string RgbToHex(string rgb, Regex rgbRegex)
