@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Windows;
 using System.Text.RegularExpressions;
+using System.Windows.Media;
 
 namespace Flow.Launcher.Plugin.Color
 {
@@ -58,7 +59,8 @@ namespace Flow.Launcher.Plugin.Color
 
             var results = new List<Result>();
 
-            foreach (var raw in rawList) {
+            foreach (var raw in rawList)
+            {
 
                 // Standardise format since rgb code typed in could be 99,197,34 or (39,0,152)
                 var colorCode = Regex.Replace(raw, colorCodeCleanRegex, "");
@@ -70,6 +72,13 @@ namespace Flow.Launcher.Plugin.Color
 
                 if (!isRgb && !isHex)
                     return new List<Result>();
+
+                if (isRgb)
+                {
+                    var rgbValues = colorCode.Split(',').Select(int.Parse).ToList();
+                    if (rgbValues.Any(val => val > 255))
+                        return new List<Result>();
+                }
 
                 try
                 {
@@ -155,11 +164,18 @@ namespace Flow.Launcher.Plugin.Color
             using (var bitmap = new Bitmap(IMG_SIZE, IMG_SIZE))
             using (var graphics = Graphics.FromImage(bitmap))
             {
-                var color = ColorTranslator.FromHtml(name);
+                var colorCode = name;
+                var rgbRegex = new Regex(@"^(\d{1,3}),\s?(\d{1,3}),\s?(\d{1,3})$");
+                var isRgb = rgbRegex.IsMatch(colorCode);
+                if (isRgb)
+                {
+                    colorCode = RgbToHex(colorCode, rgbRegex); // Convert RGB to hex
+                }
+                var color = ColorTranslator.FromHtml(colorCode);
                 graphics.Clear(color);
 
 
-                var path = Path.Combine(ColorsDirectory.FullName, name+".png");
+                var path = Path.Combine(ColorsDirectory.FullName, name + ".png");
                 bitmap.Save(path, ImageFormat.Png);
                 return path;
             }
