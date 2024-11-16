@@ -7,6 +7,26 @@ The Color plugin was part of Flow Launcher's default plugins and is now a standa
 
 For a history of commits for Color plugin itself, please see Flow Launcher's commit history.
 
-The HexRgb plugin is created by VladimÌr Antoö (@vladimirantos) and ported over into Color plugin.
+The HexRgb plugin is created by Vladim√≠r Anto≈° (@vladimirantos) and ported over into Color plugin.
 
-This plugin is for previewing color in hex or rgb. From flow type `#d948a7` or `217,72,167` or `99,197,34;(39,0,152)`
+This plugin is for previewing and converting colors between hex, rgb, vec3 and hsl.
+
+## Preview:
+### Examples of valid inputs:
+#d948a7
+
+217,72,167
+
+0.8509804, 0.28235295, 0.654902
+
+320.7, 65.6%, 56.7%
+
+### Multiple inputs in a single query:
+#d948a7 ; 217,72,167 ; 0.8509804, 0.28235295, 0.654902 ; 320.7, 65.6%, 56.7%
+
+Whitespace and paranthesis are ignored.
+
+Inputs can be prefixed with rgb, vec3 and hsl to avoid ambiguity.
+
+![image](https://github.com/user-attachments/assets/85092512-0b13-44e8-85c9-e38328ba7be5)
+
